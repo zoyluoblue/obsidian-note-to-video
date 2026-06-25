@@ -1,0 +1,37 @@
+.zoyclip-modal .zoyclip-meta {
+  color: var(--text-muted);
+  margin-top: 0;
+}
+
+.zoyclip-modal .zoyclip-hook,
+.zoyclip-modal .zoyclip-cta {
+  margin: 0.6em 0;
+  padding: 0.5em 0.7em;
+  border-left: 3px solid var(--interactive-accent);
+  background: var(--background-secondary);
+  border-radius: 4px;
+}
+
+.zoyclip-modal .zoyclip-seg {
+  margin: 0.5em 0;
+  padding: 0.5em 0.7em;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+}
+
+.zoyclip-modal .zoyclip-seg-meta {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  margin-bottom: 0.2em;
+}
+
+.zoyclip-modal .zoyclip-seg-sub {
+  font-size: 0.85em;
+  color: var(--text-accent);
+  margin-top: 0.3em;
+}
+
+.zoyclip-modal .zoyclip-btnrow {
+  margin-top: 1em;
+  text-align: right;
+}

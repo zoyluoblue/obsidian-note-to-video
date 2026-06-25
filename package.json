@@ -1,0 +1,27 @@
+{
+  "name": "zoyclip",
+  "version": "0.0.1",
+  "description": "Obsidian plugin: a note -> vertical voiceover short video (cloud LLM script + local Kokoro TTS + local ffmpeg).",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "typecheck": "tsc -noEmit -skipLibCheck"
+  },
+  "keywords": [
+    "obsidian",
+    "tts",
+    "ffmpeg",
+    "short-video",
+    "tiktok"
+  ],
+  "author": "zoyluo",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "0.21.5",
+    "obsidian": "latest",
+    "typescript": "^5.4.5"
+  }
+}
