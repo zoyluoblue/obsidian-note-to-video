@@ -3,7 +3,7 @@
 // 无图则回退动画渐变背景。已实测：逐帧 RGBA → ffmpeg rawvideo 管道 ≈ 9× 实时。
 
 import { spawn } from "child_process";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import type { ToolPaths } from "../ffmpeg";
 import type { ShortScript } from "../types";
@@ -40,6 +40,10 @@ export interface FrameRenderOpts {
   musicPath?: string;
   /** 背景音乐音量 0..1（ducking 前的基准音量） */
   musicVolume?: number;
+  /** 取消信号：aborted 时 kill ffmpeg 并中止 */
+  signal?: AbortSignal;
+  /** 渲染进度回报 0..1 */
+  onProgress?: (frac: number) => void;
   fps?: number;
 }
 
@@ -182,12 +186,18 @@ export async function renderFrames(o: FrameRenderOpts): Promise<string> {
     new Promise((res) => (ff.stdin.write(buf) ? res() : ff.stdin.once("drain", res)));
 
   for (let f = 0; f < frames; f++) {
+    if (o.signal?.aborted) {
+      ff.kill("SIGKILL");
+      throw new Error("已取消");
+    }
     const t = f / fps;
     drawBackground(ctx, t, f, amps, imgs, o);
     drawCaption(ctx, t, o);
     const img = ctx.getImageData(0, 0, W, H);
     await write(Buffer.from(img.data.buffer, img.data.byteOffset, img.data.byteLength));
+    if (f % 15 === 0) o.onProgress?.(f / frames);
   }
+  o.onProgress?.(1);
   ff.stdin.end();
   await ffDone;
   return out;
@@ -419,4 +429,103 @@ function drawCaptionTikTok(ctx: CanvasRenderingContext2D, t: number, o: FrameRen
   ctx.strokeText(text, 0, 0);
   ctx.fillText(text, 0, 0);
   ctx.restore();
+}
+
+function canvasToPng(canvas: HTMLCanvasElement): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(async (blob) => {
+      if (!blob) return reject(new Error("canvas.toBlob 失败"));
+      resolve(Buffer.from(await blob.arrayBuffer()));
+    }, "image/png");
+  });
+}
+
+/** 按像素宽度折行（ctx.font 需先设好）。 */
+function wrapByWidth(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    const tentative = cur ? cur + " " + w : w;
+    if (cur && ctx.measureText(tentative).width > maxW) {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = tentative;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [text.trim()];
+}
+
+export interface CoverOpts {
+  title: string;
+  imagePath?: string;
+  bg: [string, string];
+  outPath: string;
+}
+
+/** 生成一张 9:16 封面：首图(加暗) + 大标题 + 黄色装饰条。供小红书等当封面。 */
+export async function renderCover(o: CoverOpts): Promise<void> {
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("无法创建 Canvas 2D 上下文");
+
+  // 背景：首图(铺满+加重暗化) 或 渐变
+  const imgs = o.imagePath ? await loadImages([o.imagePath]) : [];
+  if (imgs.length) {
+    drawCover(ctx, imgs[0], 0.4);
+    const sc = ctx.createLinearGradient(0, 0, 0, H);
+    sc.addColorStop(0, "rgba(0,0,0,0.55)");
+    sc.addColorStop(0.5, "rgba(0,0,0,0.32)");
+    sc.addColorStop(1, "rgba(0,0,0,0.7)");
+    ctx.fillStyle = sc;
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, o.bg[0]);
+    g.addColorStop(1, o.bg[1]);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // 标题：大字、自适应、上中位置
+  const title = (o.title || "").trim() || "Untitled";
+  const fontOf = (px: number) => `800 ${px}px "Helvetica Neue", Arial, sans-serif`;
+  let fs = 132;
+  ctx.font = fontOf(fs);
+  let lines = wrapByWidth(ctx, title, 900);
+  while (lines.length > 4 && fs > 72) {
+    fs -= 10;
+    ctx.font = fontOf(fs);
+    lines = wrapByWidth(ctx, title, 900);
+  }
+  const lineH = Math.round(fs * 1.16);
+  const blockTop = Math.round(H * 0.4) - (lines.length * lineH) / 2;
+
+  // 黄色装饰条
+  ctx.fillStyle = "#ffd54a";
+  ctx.fillRect(W / 2 - 90, blockTop - 56, 180, 12);
+
+  ctx.save();
+  ctx.font = fontOf(fs);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(12, Math.round(fs * 0.14));
+  ctx.strokeStyle = "rgba(0,0,0,0.92)";
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 6;
+  lines.forEach((ln, i) => {
+    const y = blockTop + i * lineH + lineH / 2;
+    ctx.strokeText(ln, W / 2, y);
+    ctx.fillText(ln, W / 2, y);
+  });
+  ctx.restore();
+
+  writeFileSync(o.outPath, await canvasToPng(canvas));
 }

@@ -11,7 +11,7 @@ import { generateScript } from "./script";
 import { synthesize, TtsBackend, TtsConfig } from "./tts";
 import { renderCaptions } from "./captions";
 import { BACKGROUNDS, compose } from "./compose";
-import { renderFrames } from "./framerender";
+import { renderCover, renderFrames } from "./framerender";
 import { fetchPexelsImages } from "./images";
 
 function toArrayBuffer(b: Buffer): ArrayBuffer {
@@ -86,8 +86,11 @@ export async function produceVideo(plugin: ZoyClipPlugin, file: TFile): Promise<
   }
 
   const tools = resolveTools(s.ffmpegPath);
-  const notice = new Notice("ZoyClip：准备中…", 0);
-  const setMsg = (m: string) => notice.setMessage(`ZoyClip：${m}`);
+  const ac = new AbortController();
+  plugin.currentAbort = ac;
+  const notice = new Notice("ZoyClip：准备中…\n（点此取消）", 0);
+  notice.noticeEl.addEventListener("click", () => ac.abort());
+  const setMsg = (m: string) => notice.setMessage(`ZoyClip：${m}\n（点此取消）`);
   let tmpDir = "";
 
   try {
@@ -125,12 +128,12 @@ export async function produceVideo(plugin: ZoyClipPlugin, file: TFile): Promise<
     };
     let tts;
     try {
-      tts = await synthesize(tools, tmpDir, script, cfg, setMsg);
+      tts = await synthesize(tools, tmpDir, script, cfg, setMsg, ac.signal);
     } catch (e) {
-      if (cfg.backend === "kokoro") {
+      if (cfg.backend === "kokoro" && !ac.signal.aborted) {
         // Kokoro 合成异常 → 整片改用 say 重跑，保证出片（避免中途换嗓音的割裂感）。
         new Notice(`Kokoro 合成出错，本次改用系统音色（say）重试。\n${e instanceof Error ? e.message : ""}`, 8000);
-        tts = await synthesize(tools, tmpDir, script, { ...cfg, backend: "system" }, setMsg);
+        tts = await synthesize(tools, tmpDir, script, { ...cfg, backend: "system" }, setMsg, ac.signal);
       } else {
         throw e;
       }
@@ -141,7 +144,7 @@ export async function produceVideo(plugin: ZoyClipPlugin, file: TFile): Promise<
     let images: string[];
     if (s.pexelsApiKey) {
       const queries = script.segments.map((seg) => seg.image_query || seg.text);
-      images = await fetchPexelsImages(s.pexelsApiKey, queries, tmpDir, setMsg);
+      images = await fetchPexelsImages(s.pexelsApiKey, queries, tmpDir, setMsg, ac.signal);
     } else {
       images = collectImages(plugin, file, raw, s.imagesFolder);
     }
@@ -163,8 +166,11 @@ export async function produceVideo(plugin: ZoyClipPlugin, file: TFile): Promise<
         images,
         musicPath: pickMusic(plugin, s.musicFolder),
         musicVolume: s.musicVolume,
+        signal: ac.signal,
+        onProgress: (frac) => setMsg(`渲染 ${Math.round(frac * 100)}%…`),
       });
     } catch (e) {
+      if (ac.signal.aborted) throw e; // 用户取消 → 不回退
       // 渲染层异常 → 回退到已验证的 ffmpeg 合成，保证出片。
       console.error("[ZoyClip] 逐帧渲染失败，回退 ffmpeg 合成", e);
       new Notice("逐帧渲染出错，本次回退到 ffmpeg 合成。", 6000);
@@ -187,14 +193,37 @@ export async function produceVideo(plugin: ZoyClipPlugin, file: TFile): Promise<
     const mp4File = await plugin.app.vault.createBinary(attachPath, toArrayBuffer(readFileSync(mp4)));
     await plugin.app.vault.append(file, `\n\n![[${mp4File.path}]]\n`);
 
+    if (s.makeCover) {
+      try {
+        setMsg("生成封面…");
+        const coverTmp = join(tmpDir, "cover.png");
+        await renderCover({
+          title: script.title,
+          imagePath: images[0],
+          bg: [toCss(bgPreset.c0), toCss(bgPreset.c1 ?? bgPreset.c0)],
+          outPath: coverTmp,
+        });
+        const coverPath = await plugin.app.fileManager.getAvailablePathForAttachment(`${base}-cover.png`);
+        const coverFile = await plugin.app.vault.createBinary(coverPath, toArrayBuffer(readFileSync(coverTmp)));
+        await plugin.app.vault.append(file, `![[${coverFile.path}]]\n`);
+      } catch (e) {
+        console.error("[ZoyClip] 封面生成失败", e);
+      }
+    }
+
     notice.hide();
     new Notice(`✅ 出片完成（约 ${Math.round(tts.totalSeconds)}s），已嵌入「${file.basename}」。`, 6000);
   } catch (e) {
     notice.hide();
     const msg = e instanceof Error ? e.message : String(e);
-    new Notice(`出片失败：${msg}`, 9000);
-    console.error("[ZoyClip]", e);
+    if (ac.signal.aborted || msg === "已取消") {
+      new Notice("已取消出片。", 4000);
+    } else {
+      new Notice(`出片失败：${msg}`, 9000);
+      console.error("[ZoyClip]", e);
+    }
   } finally {
+    plugin.currentAbort = undefined;
     if (tmpDir) {
       try {
         rmSync(tmpDir, { recursive: true, force: true });

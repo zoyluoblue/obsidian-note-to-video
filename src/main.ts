@@ -6,6 +6,8 @@ import type { ShortScript } from "./types";
 
 export default class ZoyClipPlugin extends Plugin {
   settings: ZoyClipSettings = DEFAULT_SETTINGS;
+  /** 当前出片任务的取消控制器（点进度提示 / 命令面板可取消） */
+  currentAbort?: AbortController;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -19,6 +21,16 @@ export default class ZoyClipPlugin extends Plugin {
       id: "produce-video",
       name: "把当前笔记做成竖屏短视频（完整出片）",
       checkCallback: (checking) => this.activeFileCallback(checking, (f) => produceVideo(this, f)),
+    });
+
+    this.addCommand({
+      id: "cancel-produce",
+      name: "取消当前出片",
+      checkCallback: (checking) => {
+        if (!this.currentAbort) return false;
+        if (!checking) this.currentAbort.abort();
+        return true;
+      },
     });
 
     this.addCommand({

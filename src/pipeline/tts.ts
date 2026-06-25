@@ -83,13 +83,15 @@ export async function synthesize(
   tmpDir: string,
   script: ShortScript,
   cfg: TtsConfig,
-  onStep?: (msg: string) => void
+  onStep?: (msg: string) => void,
+  signal?: AbortSignal
 ): Promise<TtsResult> {
   const timings: SegTiming[] = [];
   const listLines: string[] = [];
   let cursor = 0;
 
   for (let i = 0; i < script.segments.length; i++) {
+    if (signal?.aborted) throw new Error("已取消");
     const seg = script.segments[i];
     onStep?.(`配音 ${i + 1}/${script.segments.length}…`);
 

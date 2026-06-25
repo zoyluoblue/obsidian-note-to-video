@@ -38,6 +38,8 @@ export interface ZoyClipSettings {
   musicFolder: string;
   /** 背景音乐音量 0..1（ducking 前基准） */
   musicVolume: number;
+  /** 是否额外生成一张小红书封面图 */
+  makeCover: boolean;
 }
 
 export const DEFAULT_SETTINGS: ZoyClipSettings = {
@@ -59,6 +61,7 @@ export const DEFAULT_SETTINGS: ZoyClipSettings = {
   captionStyle: "sentence",
   musicFolder: "",
   musicVolume: 0.22,
+  makeCover: true,
 };
 
 export class ZoyClipSettingTab extends PluginSettingTab {
@@ -170,6 +173,15 @@ export class ZoyClipSettingTab extends PluginSettingTab {
       const n = parseFloat(v);
       s.musicVolume = Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0.22;
     }, "0.22");
+    new Setting(containerEl)
+      .setName("生成小红书封面图")
+      .setDesc("额外出一张 9:16 封面（首图 + 大标题），嵌进笔记，发小红书当封面用")
+      .addToggle((t) =>
+        t.setValue(s.makeCover).onChange(async (v) => {
+          s.makeCover = v;
+          await this.plugin.saveSettings();
+        })
+      );
     this.text(containerEl, "ffmpeg 路径", "留空则自动在 PATH 与 /opt/homebrew/bin 等查找。macOS：brew install ffmpeg",
       () => s.ffmpegPath, (v) => (s.ffmpegPath = v), "/opt/homebrew/bin/ffmpeg");
   }
