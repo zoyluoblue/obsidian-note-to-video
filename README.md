@@ -1,38 +1,64 @@
-# ZoyClip — Obsidian 笔记 → 竖屏口播短视频
+# Obsidian Note → Vertical Short Video
 
-把一篇笔记一键变成可直接发 TikTok / 小红书的 9:16 短视频。
+Turn any **Obsidian** note into a **faceless vertical short video** (9:16) ready for **TikTok, Instagram Reels, YouTube Shorts, and 小红书 (RED)** — with **local AI voiceover, auto images, animated captions, background music, and an auto-generated cover**. Runs locally on your Mac, free, no watermark.
 
-- **脚本改写**：走云 LLM（DeepSeek / OpenAI 兼容）。⚠️ 笔记正文会发送到第三方云服务。
-- **配音 TTS**：本地 **Kokoro**（sherpa-onnx + Kokoro int8 多语模型）。首次自动下载引擎(~26MB)+模型(~147MB)，之后纯本地、无服务、无 Python，中英双语。回退后端 macOS `say`。
-- **出片渲染**：本地 ffmpeg，字幕卡用 Canvas 渲成 PNG 叠加（不依赖 libass/drawtext）。
+> One note in → a finished 1080×1920 MP4 (plus a cover image) embedded right back into your note.
 
-> 仅桌面可用（`isDesktopOnly`）。脚本走云、TTS 与出片本地。
+## What it does
 
-## 里程碑
+1. **Script** — rewrites your note into a punchy spoken-word script (hook + short segments) via a cloud LLM (**DeepSeek / OpenAI**, OpenAI-compatible).
+2. **Voiceover** — synthesizes narration **locally** with **Kokoro TTS** (via sherpa-onnx). Engine + model auto-download once, then fully offline — **no Python, no server**. Falls back to macOS `say`.
+3. **Images** — auto-fetches a fitting image per segment from **Pexels** (by AI-generated keywords), or uses images embedded in your note / a folder. Adds **Ken Burns** zoom-pan and cross-fades between segments.
+4. **Captions** — clean **single-line captions** at the bottom that follow the speech (animated, big, readable).
+5. **Music** — optional **background music with automatic ducking** (music dips under the voice).
+6. **Cover** — auto-generates a **小红书-style cover image** (title + first image) for the thumbnail / click-through.
+7. **Render** — composites everything with **ffmpeg** into a 9:16 MP4 and embeds it in your note.
 
-- **M0 ✅** 脚手架 + 设置页 + 三入口（命令面板 / 右键 / ribbon）+ 读当前笔记
-- **M1 ✅** 云 LLM 把笔记改写成竖屏口播脚本（结构化 + 时长校验 + 超时压缩重写），Modal 预览
-- **M2 ✅** 本地 **Kokoro** 逐段配音（sherpa-onnx，引擎/模型首次自动下载，中英双语）→ narration.wav + 逐段时长；失败回退 `say`
-- **M3 ✅** Canvas 字幕卡 PNG + ffmpeg 合成（渐变/纯色背景 + 波形 + 定时字幕）→ 9:16 mp4
-- **M4 ✅** 端到端串联 + 落库 `![[out.mp4]]` + 进度提示 + ffmpeg 能力自检
+Everything except the text rewrite runs **on your machine** — no per-video fees, no watermark.
 
-## 开发
+## Features
+
+- 🎙️ Local neural **text-to-speech** — Kokoro (Apache-2.0), auto-downloaded, offline
+- 🖼️ Auto **B-roll** from Pexels + Ken Burns + cross-fade (or bring your own images)
+- 📝 Animated single-line captions
+- 🎵 Background music with sidechain **ducking**
+- 🪧 Auto **cover image** for 小红书 / thumbnails
+- 📊 Live progress + one-click cancel, with graceful fallbacks
+- 🔒 **Fully local rendering** (ffmpeg) — free, no watermark
+
+## Requirements
+
+- **macOS desktop** Obsidian (desktop-only; the Kokoro voice needs Apple Silicon)
+- **ffmpeg** — `brew install ffmpeg`
+- A **DeepSeek** or **OpenAI** API key (for the script step)
+- *(optional)* a free **Pexels** API key (for auto images)
+
+## Install (from source)
 
 ```bash
+git clone https://github.com/zoyluoblue/obsidian-note-to-video
+cd obsidian-note-to-video
 npm install
-npm run build        # 产出 main.js
-# 开发热构建：npm run dev
+npm run build        # outputs main.js
 ```
 
-测试：把 `main.js` / `manifest.json` / `styles.css` 拷到某个 vault 的 `.obsidian/plugins/zoyclip/`，在 Obsidian 里启用插件，设置里填 API Key，然后对任意笔记跑「从当前笔记生成竖屏口播脚本」。
+Copy `main.js`, `manifest.json`, `styles.css` into `<your-vault>/.obsidian/plugins/zoyclip/`, enable the plugin in Obsidian, fill in your API key in settings, then run the command **“把当前笔记做成竖屏短视频”** (Make a vertical short video from the current note) on any note.
 
-## 设置
+## Settings
 
-- **API Base URL**：DeepSeek `https://api.deepseek.com`；OpenAI `https://api.openai.com/v1`
-- **模型**：`deepseek-chat` / `gpt-4o-mini` 等
-- **API Key**：存于本机 `data.json`（明文），建议在同步中排除本插件目录
-- **默认语言** / **目标时长上限** / **ffmpeg 路径**（M3 起用）
+- **API** — base URL + model + key (DeepSeek `https://api.deepseek.com` / OpenAI `https://api.openai.com/v1`)
+- **TTS** — Kokoro (local, auto-download) or system `say`; voice
+- **Images** — Pexels API key (auto) — or an images folder / `![[note embeds]]` (manual)
+- **Music** — a folder of tracks (random pick + ducking) + volume
+- **Captions / background / cover** — style, gradient preset, cover on/off
+- **ffmpeg path**
 
-## 许可
+## How it stays local & free
 
-MIT（插件本体）。依赖各自许可：Kokoro Apache-2.0、ffmpeg 由用户自备。
+- **Voiceover** runs locally via **Kokoro + sherpa-onnx** — no cloud TTS bills.
+- **Rendering** uses native **ffmpeg** plus an in-app Canvas frame renderer that reuses Obsidian’s own Chromium — no second browser, no native-binary bundling.
+- Only the **script rewrite** uses a cloud LLM (your own key); your audio/video never leave your machine.
+
+## License
+
+MIT (plugin). Dependencies keep their own licenses — Kokoro Apache-2.0, ffmpeg user-provided, Pexels images under the [Pexels License](https://www.pexels.com/license/).
