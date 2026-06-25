@@ -1,5 +1,7 @@
 # ZoyClip — Note → Vertical Short Video
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 Turn any note into a faceless **9:16 vertical short video** for **TikTok, Instagram Reels, YouTube Shorts and 小红书 (RED)** — with local AI voiceover, auto images, animated captions, background music, and an auto-generated cover. **Bilingual (English / 中文).** Runs locally, free, no watermark.
 
 > One note in → a finished 1080×1920 MP4 (plus a cover image) embedded right back into your note.
