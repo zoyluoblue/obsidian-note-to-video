@@ -6,7 +6,7 @@ import { join } from "path";
 import { FileSystemAdapter, Notice, TFile } from "obsidian";
 import type ZoyClipPlugin from "../main";
 import { checkFfmpeg, resolveTools } from "../ffmpeg";
-import { ensureKokoroRuntime, kokoroSupported, KokoroRuntime } from "../runtime";
+import { ensureFfmpeg, ensureKokoroRuntime, kokoroSupported, KokoroRuntime } from "../runtime";
 import { generateScript } from "./script";
 import { synthesize, TtsBackend, TtsConfig } from "./tts";
 import { renderCaptions } from "./captions";
@@ -85,7 +85,7 @@ export async function produceVideo(plugin: ZoyClipPlugin, file: TFile): Promise<
     return;
   }
 
-  const tools = resolveTools(s.ffmpegPath);
+  let tools = resolveTools(s.ffmpegPath);
   const ac = new AbortController();
   plugin.currentAbort = ac;
   const notice = new Notice("ZoyClip：准备中…\n（点此取消）", 0);
@@ -94,7 +94,14 @@ export async function produceVideo(plugin: ZoyClipPlugin, file: TFile): Promise<
   let tmpDir = "";
 
   try {
-    await checkFfmpeg(tools);
+    try {
+      await checkFfmpeg(tools);
+    } catch {
+      // 系统无可用 ffmpeg → 自动下载静态版（仅首次），用户零配置
+      const ff = await ensureFfmpeg(runtimeDirOf(plugin), setMsg);
+      tools = { ...tools, ffmpeg: ff.ffmpeg, ffprobe: ff.ffprobe };
+      await checkFfmpeg(tools);
+    }
 
     setMsg("生成脚本…");
     const raw = await plugin.app.vault.cachedRead(file);

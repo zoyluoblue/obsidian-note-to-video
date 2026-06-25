@@ -1,7 +1,7 @@
 // 本地 Kokoro 运行时：首次自动下载 sherpa-onnx 二进制 + Kokoro 多语模型到插件目录，之后纯本地。
 // 引擎 ~26MB + 模型 ~147MB（int8 中英双语），一次性下载并缓存。仅 macOS Apple Silicon。
 
-import { createWriteStream, existsSync, mkdirSync, rmSync } from "fs";
+import { chmodSync, createWriteStream, existsSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { spawn } from "child_process";
 import { get as httpsGet } from "https";
@@ -141,4 +141,43 @@ export async function ensureKokoroRuntime(runtimeDir: string, onStep: (msg: stri
   if (!existsSync(bin)) throw new Error("语音引擎准备失败（找不到可执行文件）");
   if (!existsSync(join(modelDir, "model.int8.onnx"))) throw new Error("Kokoro 模型准备失败");
   return { bin, libDir, modelDir };
+}
+
+// ── ffmpeg 自动下载（静态二进制，macOS x64/arm64）────────────────────────
+const FFSTATIC_VER = "b6.1.1";
+
+function ffStaticUrl(name: "ffmpeg" | "ffprobe"): string {
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
+  return `https://github.com/eugeneware/ffmpeg-static/releases/download/${FFSTATIC_VER}/${name}-darwin-${arch}`;
+}
+
+export function ffmpegAutoSupported(): boolean {
+  return process.platform === "darwin";
+}
+
+/** 系统无可用 ffmpeg 时，自动下载静态 ffmpeg/ffprobe 到插件目录（含全部所需编码器/滤镜，已实测）。 */
+export async function ensureFfmpeg(
+  runtimeDir: string,
+  onStep: (m: string) => void
+): Promise<{ ffmpeg: string; ffprobe: string }> {
+  if (!ffmpegAutoSupported()) {
+    throw new Error("未找到 ffmpeg，且自动下载仅支持 macOS。请手动安装 ffmpeg（brew install ffmpeg）或在设置里填路径。");
+  }
+  mkdirSync(runtimeDir, { recursive: true });
+  const ffmpeg = join(runtimeDir, "ffmpeg");
+  const ffprobe = join(runtimeDir, "ffprobe");
+
+  if (!existsSync(ffmpeg)) {
+    onStep("首次准备：下载 ffmpeg（约 45MB，仅此一次）…");
+    await download(ffStaticUrl("ffmpeg"), ffmpeg, (f) => onStep(`下载 ffmpeg ${(f * 100).toFixed(0)}%…`));
+    chmodSync(ffmpeg, 0o755);
+  }
+  if (!existsSync(ffprobe)) {
+    onStep("首次准备：下载 ffprobe（约 45MB，仅此一次）…");
+    await download(ffStaticUrl("ffprobe"), ffprobe, (f) => onStep(`下载 ffprobe ${(f * 100).toFixed(0)}%…`));
+    chmodSync(ffprobe, 0o755);
+  }
+  await clearQuarantine(ffmpeg);
+  await clearQuarantine(ffprobe);
+  return { ffmpeg, ffprobe };
 }
