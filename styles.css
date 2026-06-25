@@ -35,3 +35,47 @@
   margin-top: 1em;
   text-align: right;
 }
+
+.zoyclip-modal .zoyclip-btnrow button {
+  margin-left: 0.5em;
+}
+
+/* 出片前预览/编辑 */
+.zoyclip-modal .zoyclip-seglist {
+  max-height: 55vh;
+  overflow-y: auto;
+  margin: 0 -0.2em;
+  padding: 0 0.2em;
+}
+
+.zoyclip-modal .zoyclip-edit-text {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 2.6em;
+  font: inherit;
+  color: var(--text-normal);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 0.35em 0.5em;
+}
+
+.zoyclip-modal .zoyclip-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  margin-top: 0.35em;
+}
+
+.zoyclip-modal .zoyclip-edit-label {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.zoyclip-modal .zoyclip-edit-query {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85em;
+}

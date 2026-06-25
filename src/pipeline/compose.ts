@@ -20,10 +20,10 @@ export interface BgPreset {
 }
 
 export const BACKGROUNDS: BgPreset[] = [
-  { id: "midnight", name: "午夜蓝渐变", kind: "gradient", c0: "0x0f2027", c1: "0x2c5364" },
-  { id: "sunset", name: "日落渐变", kind: "gradient", c0: "0x3a1c71", c1: "0xd76d77" },
-  { id: "forest", name: "森野渐变", kind: "gradient", c0: "0x134e5e", c1: "0x71b280" },
-  { id: "ink", name: "纯黑", kind: "solid", c0: "0x101014" },
+  { id: "midnight", name: "Midnight", kind: "gradient", c0: "0x0f2027", c1: "0x2c5364" },
+  { id: "sunset", name: "Sunset", kind: "gradient", c0: "0x3a1c71", c1: "0xd76d77" },
+  { id: "forest", name: "Forest", kind: "gradient", c0: "0x134e5e", c1: "0x71b280" },
+  { id: "ink", name: "Ink", kind: "solid", c0: "0x101014" },
 ];
 
 export interface ComposeOpts {

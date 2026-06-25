@@ -22,7 +22,7 @@ function fontFamily(lang: Lang): string {
 function canvasToPng(canvas: HTMLCanvasElement): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(async (blob) => {
-      if (!blob) return reject(new Error("canvas.toBlob 失败"));
+      if (!blob) return reject(new Error("canvas.toBlob failed"));
       resolve(Buffer.from(await blob.arrayBuffer()));
     }, "image/png");
   });
@@ -48,7 +48,7 @@ export async function renderCaptions(
 
     const canvas = document.createElement("canvas");
     let ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("无法创建 Canvas 2D 上下文");
+    if (!ctx) throw new Error("Cannot create a Canvas 2D context");
     ctx.font = font;
 
     let textW = 0;
@@ -59,7 +59,7 @@ export async function renderCaptions(
 
     // 改尺寸会重置上下文，重新取一次并配置
     ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("无法创建 Canvas 2D 上下文");
+    if (!ctx) throw new Error("Cannot create a Canvas 2D context");
     ctx.font = font;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";

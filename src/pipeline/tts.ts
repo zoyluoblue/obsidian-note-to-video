@@ -9,6 +9,7 @@ import { join } from "path";
 import { probeDuration, runFfmpeg, runSay, runWithEnv, ToolPaths } from "../ffmpeg";
 import type { KokoroRuntime } from "../runtime";
 import type { ShortScript } from "../types";
+import { t } from "../i18n";
 
 export type TtsBackend = "system" | "kokoro";
 
@@ -53,17 +54,16 @@ async function synthSay(tools: ToolPaths, voice: string, text: string, raw: stri
 
 async function synthKokoro(rt: KokoroRuntime, sid: number, text: string, raw: string): Promise<void> {
   const m = rt.modelDir;
-  // 英文 Kokoro 模型：用 espeak-ng 直接 G2P，无需 lexicon / dict。
+  // 英文模型用 espeak-ng 直接 G2P；中文模型额外需要 jieba dict + 中英文 lexicon（rt 里带）。
   const args = [
-    `--kokoro-model=${join(m, "model.int8.onnx")}`,
+    `--kokoro-model=${rt.modelFile}`,
     `--kokoro-voices=${join(m, "voices.bin")}`,
     `--kokoro-tokens=${join(m, "tokens.txt")}`,
     `--kokoro-data-dir=${join(m, "espeak-ng-data")}`,
-    "--num-threads=2",
-    `--sid=${sid}`,
-    `--output-filename=${raw}`,
-    text,
   ];
+  if (rt.dictDir) args.push(`--kokoro-dict-dir=${rt.dictDir}`);
+  if (rt.lexicon) args.push(`--kokoro-lexicon=${rt.lexicon}`);
+  args.push("--num-threads=2", `--sid=${sid}`, `--output-filename=${raw}`, text);
   const attempt = async (): Promise<boolean> => {
     try {
       await runWithEnv(rt.bin, args, { DYLD_LIBRARY_PATH: rt.libDir });
@@ -74,7 +74,7 @@ async function synthKokoro(rt: KokoroRuntime, sid: number, text: string, raw: st
   };
   // 偶发首调失败 → 重试一次。
   if (!(await attempt()) && !(await attempt())) {
-    throw new Error("Kokoro 合成失败（已重试）");
+    throw new Error("Kokoro synthesis failed (after retry)");
   }
 }
 
@@ -91,9 +91,9 @@ export async function synthesize(
   let cursor = 0;
 
   for (let i = 0; i < script.segments.length; i++) {
-    if (signal?.aborted) throw new Error("已取消");
+    if (signal?.aborted) throw new Error("Canceled");
     const seg = script.segments[i];
-    onStep?.(`配音 ${i + 1}/${script.segments.length}…`);
+    onStep?.(t().voiceover(i + 1, script.segments.length));
 
     const raw = join(tmpDir, `raw_${i}.wav`);
     if (cfg.backend === "kokoro" && cfg.runtime) await synthKokoro(cfg.runtime, cfg.sid, seg.text, raw);

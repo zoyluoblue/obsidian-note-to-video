@@ -3,7 +3,7 @@
   "name": "ZoyClip — Note to Short Video",
   "version": "0.0.1",
   "minAppVersion": "1.5.0",
-  "description": "把一篇笔记一键改写成竖屏口播脚本，本地 Kokoro 配音 + ffmpeg 出 9:16 短视频（TikTok/小红书）。脚本走云 LLM，TTS/出片本地。",
+  "description": "Turn a note into a 9:16 vertical short video. A cloud LLM (OpenAI/DeepSeek) rewrites it into a script; local Kokoro TTS and ffmpeg render it with auto images, captions and music. Your note text is sent to the cloud LLM.",
   "author": "zoyluo",
   "isDesktopOnly": true
 }

@@ -2,8 +2,9 @@
 // 流程：构造 prompt → 调 chat/completions(json_object) → 解析校验 → 时长校验 → 必要时压缩重写一次。
 
 import { requestUrl } from "obsidian";
-import type { ZoyClipSettings } from "../settings";
+import { activeApiKey, type ZoyClipSettings } from "../settings";
 import type { Lang, Segment, ShortScript } from "../types";
+import { t } from "../i18n";
 
 const MAX_NOTE_CHARS = 8000;
 
@@ -58,19 +59,31 @@ function splitLines(text: string, lang: Lang): string[] {
 
 function systemPrompt(lang: Lang, maxS: number): string {
   const minS = Math.max(20, Math.min(45, maxS - 30));
-  const langName = lang === "zh" ? "中文" : "英文";
-  const wrap = lang === "zh" ? "中文每行约 12 个字" : "英文每行不超过 42 个字符";
+  if (lang === "zh") {
+    return [
+      `你是竖屏短视频(9:16)口播脚本撰稿人。把用户给的笔记改写成中文、${minS}-${maxS} 秒的口播脚本。`,
+      "要求：",
+      "1) 开头 3 秒一句强钩子(疑问/反常识/痛点)，禁止寒暄铺垫。",
+      "2) 主体 3-6 个口语化短段，每段只讲一个要点；各段内容必须互不相同，严禁重复同一句话或把同一个意思换个说法再说一遍，句子短、可被 2-4 秒切一次画面。",
+      "3) 结尾一句明确 CTA(关注/评论/收藏 选其一)。",
+      "4) 口语、第二人称，避免书面长句和专业堆砌。",
+      "5) subtitle_lines 必须已按中文断行：每行约 12 个字。",
+      "6) 每段给一个 image_query：2-4 个英文词的画面搜索关键词，描述这段适合配什么实拍画面（用具体名词/场景，避免抽象词，便于图库检索）。注意：image_query 永远用英文，便于图库检索。",
+      "7) 仅输出一个合法 JSON 对象（不要 markdown 代码块、不要任何解释文字），结构如下：",
+      `{"lang":"zh","title":"...","hook":"...","cta":"...","segments":[{"id":1,"role":"hook|point|cta","text":"该段口播文本","subtitle_lines":["..."],"pause_after_ms":350,"image_query":"office desk laptop"}]}`,
+    ].join("\n");
+  }
   return [
-    `你是竖屏短视频(9:16)口播脚本撰稿人。把用户给的笔记改写成${langName}、${minS}-${maxS} 秒的口播脚本。`,
-    "要求：",
-    "1) 开头 3 秒一句强钩子(疑问/反常识/痛点)，禁止寒暄铺垫。",
-    "2) 主体 3-6 个口语化短段，每段只讲一个要点；各段内容必须互不相同，严禁重复同一句话或把同一个意思换个说法再说一遍，句子短、可被 2-4 秒切一次画面。",
-    "3) 结尾一句明确 CTA(关注/评论/收藏 选其一)。",
-    "4) 口语、第二人称，避免书面长句和专业堆砌。",
-    `5) subtitle_lines 必须已按本语言断行：${wrap}。`,
-    "6) 每段给一个 image_query：2-4 个英文词的画面搜索关键词，描述这段适合配什么实拍画面（用具体名词/场景，避免抽象词，便于图库检索）。",
-    "7) 仅输出一个合法 JSON 对象（不要 markdown 代码块、不要任何解释文字），结构如下：",
-    `{"lang":"${lang}","title":"...","hook":"...","cta":"...","segments":[{"id":1,"role":"hook|point|cta","text":"该段口播文本","subtitle_lines":["..."],"pause_after_ms":350,"image_query":"office desk laptop"}]}`,
+    `You are a scriptwriter for vertical (9:16) short-form videos. Rewrite the user's note into a spoken English script lasting ${minS}-${maxS} seconds.`,
+    "Requirements:",
+    "1) Open with a strong 3-second hook (a question, a counterintuitive claim, or a pain point). No greetings or warm-up.",
+    "2) Body: 3-6 short, conversational segments, each making ONE point. Every segment must be distinct — never repeat the same sentence or restate the same idea in different words. Keep sentences short, cuttable to a new shot every 2-4 seconds.",
+    "3) End with one clear CTA (pick one: follow / comment / save).",
+    "4) Conversational and second person; avoid long written sentences and jargon.",
+    "5) subtitle_lines must already be wrapped for English: at most 42 characters per line.",
+    "6) Give each segment an image_query: 2-4 English words describing a concrete real-world shot for that segment (use specific nouns/scenes, avoid abstract words, so stock libraries can find it).",
+    "7) Output ONLY one valid JSON object (no markdown code block, no explanatory text), with this structure:",
+    `{"lang":"${lang}","title":"...","hook":"...","cta":"...","segments":[{"id":1,"role":"hook|point|cta","text":"the spoken text for this segment","subtitle_lines":["..."],"pause_after_ms":350,"image_query":"office desk laptop"}]}`,
   ].join("\n");
 }
 
@@ -86,7 +99,7 @@ async function chat(settings: ZoyClipSettings, messages: ChatMessage[]): Promise
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.apiKey}`,
+      Authorization: `Bearer ${activeApiKey(settings)}`,
     },
     body: JSON.stringify({
       model: settings.model,
@@ -97,10 +110,10 @@ async function chat(settings: ZoyClipSettings, messages: ChatMessage[]): Promise
     throw: false,
   });
   if (res.status < 200 || res.status >= 300) {
-    throw new Error(`LLM 请求失败 ${res.status}：${(res.text || "").slice(0, 200)}`);
+    throw new Error(t().llmRequestFailed(res.status, (res.text || "").slice(0, 200)));
   }
   const content: string | undefined = res.json?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("LLM 返回空内容");
+  if (!content) throw new Error(t().llmEmpty);
   return content;
 }
 
@@ -109,7 +122,7 @@ function parseScript(raw: string, lang: Lang): ShortScript {
   try {
     obj = JSON.parse(stripFences(raw));
   } catch {
-    throw new Error("LLM 输出不是合法 JSON");
+    throw new Error(t().llmNotJson);
   }
 
   const rawSegs: unknown[] = Array.isArray(obj?.segments) ? (obj.segments as unknown[]) : [];
@@ -141,14 +154,14 @@ function parseScript(raw: string, lang: Lang): ShortScript {
       return true;
     });
 
-  if (!segments.length) throw new Error("脚本为空（无有效段落）");
+  if (!segments.length) throw new Error(t().scriptEmpty);
 
   for (const s of segments) s.est_seconds = round1(estSeconds(s.text, lang) + s.pause_after_ms / 1000);
   const total = round1(segments.reduce((a, s) => a + s.est_seconds, 0));
 
   return {
     lang,
-    title: String(obj?.title ?? "").trim() || "未命名",
+    title: String(obj?.title ?? "").trim() || "Untitled",
     hook: String(obj?.hook ?? segments[0]?.text ?? "").trim(),
     cta: String(obj?.cta ?? "").trim(),
     segments,
@@ -162,8 +175,8 @@ export async function generateScript(settings: ZoyClipSettings, noteText: string
     .replace(/^---[\s\S]*?---/, "") // 去掉 frontmatter
     .trim()
     .slice(0, MAX_NOTE_CHARS);
-  if (!text) throw new Error("笔记内容为空");
-  if (!settings.apiKey) throw new Error("未配置 API Key（请在设置中填写）");
+  if (!text) throw new Error(t().noteEmpty);
+  if (!activeApiKey(settings)) throw new Error(t().apiKeyNotSet(settings.provider === "deepseek" ? "DeepSeek" : "OpenAI"));
 
   const sys = systemPrompt(lang, settings.targetSeconds);
   let script = parseScript(
@@ -181,7 +194,10 @@ export async function generateScript(settings: ZoyClipSettings, noteText: string
       { role: "assistant", content: JSON.stringify(script) },
       {
         role: "user",
-        content: `上面的脚本约 ${Math.round(script.total_est_seconds)} 秒，超过 ${settings.targetSeconds} 秒。请在同样结构下大幅精简，控制到 ${settings.targetSeconds} 秒以内，仍只输出合法 JSON。`,
+        content:
+          lang === "zh"
+            ? `上面的脚本约 ${Math.round(script.total_est_seconds)} 秒，超过 ${settings.targetSeconds} 秒。请在同样结构下大幅精简，控制到 ${settings.targetSeconds} 秒以内，仍只输出合法 JSON。`
+            : `The script above is about ${Math.round(script.total_est_seconds)}s, over the ${settings.targetSeconds}s limit. Shorten it substantially in the same structure to fit within ${settings.targetSeconds}s, still outputting only valid JSON.`,
       },
     ];
     try {

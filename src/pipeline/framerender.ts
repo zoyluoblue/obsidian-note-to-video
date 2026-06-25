@@ -22,6 +22,14 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
+/** 含中日韩字符或全角标点（这类文本无空格，需按字符断行 + CJK 字体）。 */
+function hasCJK(s: string): boolean {
+  return /[　-〿㐀-鿿぀-ヿ가-힯]/.test(s);
+}
+
+// 字幕/封面字体栈：拉丁优先，后接中日韩字体（macOS PingFang / 旧版 Hiragino / Windows 雅黑），保证中文不出豆腐块。
+const FONT_STACK = `"Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif`;
+
 export interface FrameRenderOpts {
   tools: ToolPaths;
   tmpDir: string;
@@ -148,7 +156,7 @@ export async function renderFrames(o: FrameRenderOpts): Promise<string> {
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("无法创建 Canvas 2D 上下文");
+  if (!ctx) throw new Error("Cannot create a Canvas 2D context");
 
   // 输入：0=rawvideo 管道，1=旁白 wav，(可选)2=背景音乐(循环)
   const args: string[] = [
@@ -180,7 +188,7 @@ export async function renderFrames(o: FrameRenderOpts): Promise<string> {
   ff.stderr.on("data", (d: Buffer) => (ffErr = (ffErr + d.toString()).slice(-500)));
   const ffDone = new Promise<void>((resolve, reject) => {
     ff.on("error", reject);
-    ff.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg 退出码 ${code}：${ffErr}`))));
+    ff.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited with code ${code}: ${ffErr}`))));
   });
   const write = (buf: Buffer): Promise<void> =>
     new Promise((res) => (ff.stdin.write(buf) ? res() : ff.stdin.once("drain", res)));
@@ -188,7 +196,7 @@ export async function renderFrames(o: FrameRenderOpts): Promise<string> {
   for (let f = 0; f < frames; f++) {
     if (o.signal?.aborted) {
       ff.kill("SIGKILL");
-      throw new Error("已取消");
+      throw new Error("Canceled");
     }
     const t = f / fps;
     drawBackground(ctx, t, f, amps, imgs, o);
@@ -266,9 +274,19 @@ function drawCaption(ctx: CanvasRenderingContext2D, t: number, o: FrameRenderOpt
   else drawCaptionTikTok(ctx, t, o);
 }
 
-/** 把整段按词折成「单行」片段（每行 ≤ maxChars），供逐行显示。 */
+/** 把整段折成「单行」片段（每行 ≤ maxChars），供逐行显示。中文按字符断行，拉丁按词断行。 */
 function wrapLines(text: string, maxChars: number): string[] {
-  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const t = text.trim();
+  if (!t) return [];
+  if (hasCJK(t)) {
+    // 中文无空格：按字符断行；CJK 字宽约拉丁 2×，故每行字数减半。
+    const per = Math.max(6, Math.floor(maxChars / 2));
+    const chars = [...t.replace(/\s+/g, "")];
+    const lines: string[] = [];
+    for (let i = 0; i < chars.length; i += per) lines.push(chars.slice(i, i + per).join(""));
+    return lines.length ? lines : [t];
+  }
+  const words = t.replace(/\s+/g, " ").split(" ").filter(Boolean);
   const lines: string[] = [];
   let cur = "";
   for (const w of words) {
@@ -281,7 +299,7 @@ function wrapLines(text: string, maxChars: number): string[] {
     }
   }
   if (cur) lines.push(cur);
-  return lines.length ? lines : [text.trim()];
+  return lines.length ? lines : [t];
 }
 
 /** 整句字幕：每次只显示一行（整段按字符权重逐行推进），全白无高亮，底部居中。 */
@@ -317,7 +335,7 @@ function drawCaptionSentence(ctx: CanvasRenderingContext2D, t: number, o: FrameR
   const lineStartT = segStart + startFrac[li] * dur;
   const alpha = clamp((t - lineStartT) / 0.18, 0, 1);
 
-  const fontOf = (px: number) => `700 ${px}px "Helvetica Neue", Arial, sans-serif`;
+  const fontOf = (px: number) => `700 ${px}px ${FONT_STACK}`;
   let fs = 72;
   ctx.font = fontOf(fs);
   while (ctx.measureText(text).width > 1000 && fs > 44) {
@@ -348,9 +366,16 @@ function easeOutBack(x: number): number {
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
 }
 
-/** 把整段切成 1–3 词的小块（TikTok 风），去句末标点。 */
+/** 把整段切成 1–3 词的小块（TikTok 风），去句末标点。中文按 ~6 字一块。 */
 function chunkText(text: string): string[] {
-  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const t = text.trim();
+  if (hasCJK(t)) {
+    const chars = [...t.replace(/\s+/g, "")].filter((c) => !/[，。；：！？、,.;:!?—…]/.test(c));
+    const chunks: string[] = [];
+    for (let i = 0; i < chars.length; i += 6) chunks.push(chars.slice(i, i + 6).join(""));
+    return chunks.length ? chunks : [t];
+  }
+  const words = t.replace(/\s+/g, " ").split(" ").filter(Boolean);
   const chunks: string[] = [];
   let cur = "";
   let n = 0;
@@ -404,7 +429,7 @@ function drawCaptionTikTok(ctx: CanvasRenderingContext2D, t: number, o: FrameRen
   const scale = 0.8 + 0.2 * easeOutBack(clamp(lct / 0.13, 0, 1));
   const alpha = clamp(lct / 0.08, 0, 1);
 
-  const fontOf = (px: number) => `800 ${px}px "Helvetica Neue", Arial, sans-serif`;
+  const fontOf = (px: number) => `800 ${px}px ${FONT_STACK}`;
   let fs = 124;
   ctx.font = fontOf(fs);
   while (ctx.measureText(text).width > 900 && fs > 56) {
@@ -434,7 +459,7 @@ function drawCaptionTikTok(ctx: CanvasRenderingContext2D, t: number, o: FrameRen
 function canvasToPng(canvas: HTMLCanvasElement): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(async (blob) => {
-      if (!blob) return reject(new Error("canvas.toBlob 失败"));
+      if (!blob) return reject(new Error("canvas.toBlob failed"));
       resolve(Buffer.from(await blob.arrayBuffer()));
     }, "image/png");
   });
@@ -465,13 +490,13 @@ export interface CoverOpts {
   outPath: string;
 }
 
-/** 生成一张 9:16 封面：首图(加暗) + 大标题 + 黄色装饰条。供小红书等当封面。 */
+/** 生成一张 9:16 封面：首图(加暗) + 大标题 + 黄色装饰条，嵌进笔记当封面用。 */
 export async function renderCover(o: CoverOpts): Promise<void> {
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("无法创建 Canvas 2D 上下文");
+  if (!ctx) throw new Error("Cannot create a Canvas 2D context");
 
   // 背景：首图(铺满+加重暗化) 或 渐变
   const imgs = o.imagePath ? await loadImages([o.imagePath]) : [];
@@ -493,7 +518,7 @@ export async function renderCover(o: CoverOpts): Promise<void> {
 
   // 标题：大字、自适应、上中位置
   const title = (o.title || "").trim() || "Untitled";
-  const fontOf = (px: number) => `800 ${px}px "Helvetica Neue", Arial, sans-serif`;
+  const fontOf = (px: number) => `800 ${px}px ${FONT_STACK}`;
   let fs = 132;
   ctx.font = fontOf(fs);
   let lines = wrapByWidth(ctx, title, 900);

@@ -1,5 +1,6 @@
 import { App, MarkdownView, Menu, Modal, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
-import { DEFAULT_SETTINGS, ZoyClipSettings, ZoyClipSettingTab } from "./settings";
+import { activeApiKey, DEFAULT_SETTINGS, ZoyClipSettings, ZoyClipSettingTab } from "./settings";
+import { resolveLang, setUiLang, t } from "./i18n";
 import { generateScript } from "./pipeline/script";
 import { produceVideo } from "./pipeline/assemble";
 import type { ShortScript } from "./types";
@@ -13,19 +14,19 @@ export default class ZoyClipPlugin extends Plugin {
     await this.loadSettings();
     this.addSettingTab(new ZoyClipSettingTab(this.app, this));
 
-    this.addRibbonIcon("clapperboard", "ZoyClip：把当前笔记做成竖屏短视频", () => {
+    this.addRibbonIcon("clapperboard", t().ribbonTooltip, () => {
       void this.withActiveFile((f) => produceVideo(this, f));
     });
 
     this.addCommand({
       id: "produce-video",
-      name: "把当前笔记做成竖屏短视频（完整出片）",
+      name: t().cmdProduce,
       checkCallback: (checking) => this.activeFileCallback(checking, (f) => produceVideo(this, f)),
     });
 
     this.addCommand({
       id: "cancel-produce",
-      name: "取消当前出片",
+      name: t().cmdCancel,
       checkCallback: (checking) => {
         if (!this.currentAbort) return false;
         if (!checking) this.currentAbort.abort();
@@ -35,7 +36,7 @@ export default class ZoyClipPlugin extends Plugin {
 
     this.addCommand({
       id: "generate-script",
-      name: "仅生成口播脚本（预览）",
+      name: t().cmdGenScript,
       checkCallback: (checking) =>
         this.activeFileCallback(checking, (f) => this.previewScript(f)),
     });
@@ -45,7 +46,7 @@ export default class ZoyClipPlugin extends Plugin {
         if (file instanceof TFile && file.extension === "md") {
           menu.addItem((item) =>
             item
-              .setTitle("ZoyClip：做成竖屏短视频")
+              .setTitle(t().menuMakeVideo)
               .setIcon("clapperboard")
               .onClick(() => void produceVideo(this, file))
           );
@@ -58,7 +59,7 @@ export default class ZoyClipPlugin extends Plugin {
   private async withActiveFile(fn: (file: TFile) => Promise<void>): Promise<void> {
     const file = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
     if (!file) {
-      new Notice("请先打开一篇笔记。");
+      new Notice(t().openNoteFirst);
       return;
     }
     await fn(file);
@@ -72,26 +73,49 @@ export default class ZoyClipPlugin extends Plugin {
   }
 
   private async previewScript(file: TFile): Promise<void> {
-    if (!this.settings.apiKey) {
-      new Notice("请先在设置里填写 API Key。");
+    if (!activeApiKey(this.settings)) {
+      new Notice(t().setKeyFirst(this.settings.provider === "deepseek" ? "DeepSeek" : "OpenAI"));
       return;
     }
-    const notice = new Notice("ZoyClip：正在生成脚本…", 0);
+    const lang = resolveLang(this.settings.language);
+    setUiLang(lang);
+    const notice = new Notice(t().genScript, 0);
     try {
       const raw = await this.app.vault.cachedRead(file);
-      const script = await generateScript(this.settings, raw, this.settings.defaultLang);
+      const script = await generateScript(this.settings, raw, lang);
       notice.hide();
-      new Notice(`脚本生成完成（${script.segments.length} 段，约 ${Math.round(script.total_est_seconds)}s）`);
+      new Notice(t().scriptReady(script.segments.length, Math.round(script.total_est_seconds)));
       new ScriptModal(this.app, script).open();
     } catch (e) {
       notice.hide();
-      new Notice(`生成失败：${e instanceof Error ? e.message : String(e)}`);
+      new Notice(t().failed(e instanceof Error ? e.message : String(e)));
       console.error("[ZoyClip]", e);
     }
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loaded = ((await this.loadData()) ?? {}) as Partial<ZoyClipSettings> & { apiKey?: string };
+    const s = Object.assign({}, DEFAULT_SETTINGS, loaded) as ZoyClipSettings;
+    if (loaded.provider === undefined) {
+      // 旧版迁移：旧设置只有单个 apiKey + apiBaseUrl。按旧 Base URL 推断服务商，
+      // 并把旧 key 归到对应服务商，保住老用户已配置的可用状态。
+      const isDeepseek = /deepseek/i.test(loaded.apiBaseUrl ?? "");
+      s.provider = isDeepseek ? "deepseek" : "openai";
+      if (loaded.apiKey) {
+        if (isDeepseek && !s.apiKeyDeepseek) s.apiKeyDeepseek = loaded.apiKey;
+        else if (!isDeepseek && !s.apiKeyOpenai) s.apiKeyOpenai = loaded.apiKey;
+      }
+    }
+    // 清掉本版已移除的旧字段，避免 data.json 残留死键
+    // 清掉本版已移除的旧字段，避免 data.json 残留死键。
+    // 注意：language / kokoroSidZh 是现役字段，故意不在此列表里（别误加）。
+    const bag = s as unknown as Record<string, unknown>;
+    for (const k of ["apiKey", "ttsBackend", "background", "withWaveform", "voiceEn", "voiceZh", "defaultLang"]) {
+      delete bag[k];
+    }
+    this.settings = s;
+    setUiLang(resolveLang(this.settings.language)); // 按设置语言初始化 UI 文案
+    await this.saveSettings(); // 归一化落库（写入 provider + 分离的 key，移除旧字段）
   }
 
   async saveSettings(): Promise<void> {
@@ -110,35 +134,35 @@ class ScriptModal extends Modal {
 
   onOpen(): void {
     const { contentEl, titleEl } = this;
-    titleEl.setText(`口播脚本：${this.script.title}`);
+    titleEl.setText(t().scriptModalTitle(this.script.title));
     contentEl.addClass("zoyclip-modal");
 
     contentEl.createEl("p", {
       cls: "zoyclip-meta",
-      text: `语言 ${this.script.lang} · ${this.script.segments.length} 段 · 约 ${Math.round(this.script.total_est_seconds)} 秒`,
+      text: t().scriptModalMeta(this.script.segments.length, Math.round(this.script.total_est_seconds)),
     });
 
     const hook = contentEl.createDiv({ cls: "zoyclip-hook" });
-    hook.createEl("strong", { text: "钩子　" });
+    hook.createEl("strong", { text: t().hook });
     hook.createSpan({ text: this.script.hook });
 
     for (const seg of this.script.segments) {
       const box = contentEl.createDiv({ cls: "zoyclip-seg" });
       box.createDiv({ cls: "zoyclip-seg-meta", text: `#${seg.id} · ${seg.role} · ~${seg.est_seconds}s` });
       box.createDiv({ cls: "zoyclip-seg-text", text: seg.text });
-      box.createDiv({ cls: "zoyclip-seg-sub", text: seg.subtitle_lines.join("　|　") });
+      box.createDiv({ cls: "zoyclip-seg-sub", text: seg.subtitle_lines.join("  |  ") });
     }
 
     if (this.script.cta) {
       const cta = contentEl.createDiv({ cls: "zoyclip-cta" });
-      cta.createEl("strong", { text: "CTA　" });
+      cta.createEl("strong", { text: t().cta });
       cta.createSpan({ text: this.script.cta });
     }
 
     const row = contentEl.createDiv({ cls: "zoyclip-btnrow" });
-    row.createEl("button", { text: "复制脚本 JSON" }).addEventListener("click", async () => {
+    row.createEl("button", { text: t().copyJson }).addEventListener("click", async () => {
       await navigator.clipboard.writeText(JSON.stringify(this.script, null, 2));
-      new Notice("已复制脚本 JSON");
+      new Notice(t().copiedJson);
     });
   }
 

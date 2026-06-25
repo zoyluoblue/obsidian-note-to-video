@@ -4,6 +4,7 @@
 import { writeFileSync } from "fs";
 import { join } from "path";
 import { requestUrl } from "obsidian";
+import { t } from "../i18n";
 
 async function pexelsOne(apiKey: string, query: string, dest: string): Promise<boolean> {
   try {
@@ -38,8 +39,8 @@ export async function fetchPexelsImages(
   const out: string[] = [];
   let last = "";
   for (let i = 0; i < queries.length; i++) {
-    if (signal?.aborted) throw new Error("已取消");
-    onStep?.(`配图 ${i + 1}/${queries.length}…`);
+    if (signal?.aborted) throw new Error("Canceled");
+    onStep?.(t().images(i + 1, queries.length));
     const dest = join(tmpDir, `img_${i}.jpg`);
     const q = (queries[i] || "").trim() || "abstract minimal background";
     if (await pexelsOne(apiKey, q, dest)) {

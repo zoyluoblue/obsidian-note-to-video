@@ -3,6 +3,7 @@
 
 import { spawn } from "child_process";
 import { existsSync } from "fs";
+import { t } from "./i18n";
 
 const EXTRA_PATHS = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
 
@@ -43,9 +44,9 @@ function spawnP(cmd: string, args: string[], onStderr?: (s: string) => void): Pr
       err += s;
       onStderr?.(s);
     });
-    child.on("error", (e) => reject(new Error(`无法运行 ${cmd}：${e.message}`)));
+    child.on("error", (e) => reject(new Error(`Cannot run ${cmd}: ${e.message}`)));
     child.on("close", (code) =>
-      code === 0 ? resolve() : reject(new Error(`${cmd} 退出码 ${code}：${err.slice(-400)}`))
+      code === 0 ? resolve() : reject(new Error(`${cmd} exited with code ${code}: ${err.slice(-400)}`))
     );
   });
 }
@@ -64,8 +65,8 @@ export function runWithEnv(cmd: string, args: string[], extraEnv: Record<string,
     const child = spawn(cmd, args, { env: { ...env(), ...extraEnv } });
     let err = "";
     child.stderr.on("data", (d: Buffer) => (err += d.toString()));
-    child.on("error", (e) => reject(new Error(`无法运行 ${cmd}：${e.message}`)));
-    child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} 退出码 ${code}：${err.slice(-300)}`))));
+    child.on("error", (e) => reject(new Error(`Cannot run ${cmd}: ${e.message}`)));
+    child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exited with code ${code}: ${err.slice(-300)}`))));
   });
 }
 
@@ -84,7 +85,7 @@ export function probeDuration(tools: ToolPaths, file: string): Promise<number> {
     child.on("close", (code) => {
       const v = parseFloat(out.trim());
       if (code === 0 && Number.isFinite(v)) resolve(v);
-      else reject(new Error(`ffprobe 失败：${err.slice(-200)}`));
+      else reject(new Error(`ffprobe failed: ${err.slice(-200)}`));
     });
   });
 }
@@ -95,11 +96,7 @@ export function checkFfmpeg(tools: ToolPaths): Promise<void> {
     const child = spawn(tools.ffmpeg, ["-hide_banner", "-encoders"], { env: env() });
     let out = "";
     child.stdout.on("data", (d: Buffer) => (out += d.toString()));
-    child.on("error", () =>
-      reject(new Error("找不到 ffmpeg。请在设置里填 ffmpeg 路径，或 macOS 执行 brew install ffmpeg"))
-    );
-    child.on("close", () =>
-      out.includes("libx264") ? resolve() : reject(new Error("ffmpeg 缺少 libx264 编码器，请安装完整版 ffmpeg"))
-    );
+    child.on("error", () => reject(new Error(t().ffmpegNotFound)));
+    child.on("close", () => (out.includes("libx264") ? resolve() : reject(new Error(t().ffmpegNoX264))));
   });
 }
