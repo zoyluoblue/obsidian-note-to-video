@@ -1,8 +1,8 @@
 {
   "id": "zoyclip",
   "name": "ZoyClip - Note to Short Video",
-  "version": "1.0.0",
-  "minAppVersion": "1.5.0",
+  "version": "1.0.1",
+  "minAppVersion": "1.8.7",
   "description": "Turn a note into a 9:16 vertical short video. A cloud LLM (OpenAI/DeepSeek) rewrites it into a script; local Kokoro TTS and ffmpeg render it with auto images, captions and music. Your note text is sent to the cloud LLM.",
   "author": "zoyluo",
   "isDesktopOnly": true

@@ -46,7 +46,7 @@ export async function renderCaptions(
     const t = timings[i];
     const lines = seg.subtitle_lines.length ? seg.subtitle_lines : [seg.text];
 
-    const canvas = document.createElement("canvas");
+    const canvas = activeDocument.createElement("canvas");
     let ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Cannot create a Canvas 2D context");
     ctx.font = font;

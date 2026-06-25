@@ -152,7 +152,7 @@ export async function renderFrames(o: FrameRenderOpts): Promise<string> {
   const amps = o.withWaveform ? await readAmplitudes(o.tools, o.wavPath, frames, fps) : new Float32Array(frames);
   const imgs = o.images.length ? await loadImages(o.images) : [];
 
-  const canvas = document.createElement("canvas");
+  const canvas = activeDocument.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d");
@@ -492,7 +492,7 @@ export interface CoverOpts {
 
 /** 生成一张 9:16 封面：首图(加暗) + 大标题 + 黄色装饰条，嵌进笔记当封面用。 */
 export async function renderCover(o: CoverOpts): Promise<void> {
-  const canvas = document.createElement("canvas");
+  const canvas = activeDocument.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d");

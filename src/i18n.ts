@@ -1,6 +1,8 @@
 // 双语 UI 文案。语言由设置 language("auto"|"en"|"zh") 决定；auto 跟随 Obsidian 界面语言。
 // 用法：t().key 取静态串，t().fn(args) 取带参串。调 setUiLang() 切换当前语言。
 
+import { getLanguage } from "obsidian";
+
 export type UiLang = "en" | "zh";
 export type LangSetting = "auto" | "en" | "zh";
 
@@ -243,12 +245,11 @@ const DICT = { en: EN, zh: ZH as typeof EN };
 
 let current: UiLang = "en";
 
-/** 把语言设置解析为具体语言：auto 跟随 Obsidian 界面语言（localStorage "language"），读不到回退英文。 */
+/** 把语言设置解析为具体语言：auto 跟随 Obsidian 界面语言（getLanguage()），读不到回退英文。 */
 export function resolveLang(setting: LangSetting): UiLang {
   if (setting === "zh" || setting === "en") return setting;
   try {
-    const l = (window.localStorage.getItem("language") || "").toLowerCase();
-    return l.startsWith("zh") ? "zh" : "en";
+    return (getLanguage() || "").toLowerCase().startsWith("zh") ? "zh" : "en";
   } catch {
     return "en";
   }

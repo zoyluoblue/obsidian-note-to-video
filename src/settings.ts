@@ -125,8 +125,7 @@ export class ZoyClipSettingTab extends PluginSettingTab {
           })
       );
 
-    const intro = containerEl.createDiv({ cls: "setting-item-description" });
-    intro.style.marginBottom = "0.6em";
+    const intro = containerEl.createDiv({ cls: "setting-item-description zoyclip-intro" });
     intro.setText(L.intro);
 
     new Setting(containerEl).setName(L.hScript).setHeading();
